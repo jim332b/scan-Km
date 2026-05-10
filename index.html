@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner Compteur KM</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f2f5; margin: 0; padding: 20px; }
+        #video { width: 100%; max-width: 500px; border-radius: 12px; background: #000; }
+        #canvas { display: none; }
+        .controls { margin-top: 20px; display: flex; gap: 10px; }
+        button { padding: 12px 24px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; background: #007bff; color: white; }
+        button:disabled { background: #ccc; }
+        #result { margin-top: 20px; font-size: 24px; font-weight: bold; color: #28a745; }
+        .loader { display: none; color: #666; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <h2>Scanner de Kilométrage</h2>
+    
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <button id="captureBtn">Capturer & Lire</button>
+    </div>
+
+    <div id="loader" class="loader">Analyse en cours... (Patientez 2-3s)</div>
+    <div id="result">--- KM</div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const captureBtn = document.getElementById('captureBtn');
+        const resultDiv = document.getElementById('result');
+        const loader = document.getElementById('loader');
+
+        // URL de votre Google Apps Script (à remplacer)
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz3gQVCXXZAOB9XzHWaiG3gad9vOWWOuTRIx4p6SiFkPVm36ao7S4eOBTmiuqWLJJlS/exec";
+
+        // 1. Accéder à la caméra arrière
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment" }, 
+                    audio: false 
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error("Erreur caméra: ", err);
+                alert("Impossible d'accéder à la caméra. Vérifiez les autorisations HTTPS.");
+            }
+        }
+
+        // 2. Capturer la photo et lancer l'OCR
+        captureBtn.addEventListener('click', async () => {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            loader.style.display = 'block';
+            captureBtn.disabled = true;
+            resultDiv.innerText = "Analyse...";
+
+            // Lancer Tesseract.js
+            try {
+                const { data: { text } } = await Tesseract.recognize(
+                    canvas.toDataURL('image/jpeg'),
+                    'eng', // On utilise 'eng' car les chiffres sont universels
+                    { logger: m => console.log(m) }
+                );
+
+                // Nettoyage du texte pour ne garder que les chiffres (Regex)
+                // On cherche une suite de 3 à 7 chiffres
+                const matches = text.match(/\d{3,7}/g);
+                const finalKm = matches ? matches[0] : null;
+
+                if (finalKm) {
+                    resultDiv.innerText = finalKm + " KM";
+                    sendToGoogleSheets(finalKm);
+                } else {
+                    resultDiv.innerText = "Non détecté";
+                    alert("Chiffres illisibles, réessayez de plus près.");
+                }
+            } catch (e) {
+                alert("Erreur OCR: " + e);
+            } finally {
+                loader.style.display = 'none';
+                captureBtn.disabled = false;
+            }
+        });
+
+        // 3. Envoyer vers Google Sheets
+        function sendToGoogleSheets(km) {
+            fetch(WEB_APP_URL, {
+                method: "POST",
+                mode: "no-cors", // Crucial pour éviter les erreurs CORS
+                cache: "no-cache",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ vehicule: "Mobile Web App", kilometrage: km })
+            }).then(() => {
+                alert("Enregistré dans Google Sheets !");
+            });
+        }
+
+        startCamera();
+    </script>
+</body>
+</html>
