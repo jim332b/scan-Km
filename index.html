@@ -421,33 +421,38 @@
             loaderKm.innerText = "Transmission des données saisies...";
             loaderKm.style.display = 'block';
             
-            // 4. Envoi des données (qu'elles soient tapées à la main ou issues de l'OCR)
+            // --- ENVOI DE SÉCURITÉ NETTOYÉ ---
+            // On prépare les données sous forme de texte brut pour contourner les blocages des téléphones
+            const payload = JSON.stringify({
+                conducteur: driverValue,
+                typeEngin: enginValue,
+                plaque: plateValue || "MANUELLE",
+                kilometrage: kmValue
+            });
+
             fetch(WEB_APP_URL, {
                 method: "POST",
-                mode: "no-cors",
+                mode: "no-cors", // Gardé pour éviter les blocages de sécurité des navigateurs
                 cache: "no-cache",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    conducteur: driverValue,
-                    typeEngin: enginValue,
-                    plaque: plateValue || "MANUELLE / NON REMPLIE",
-                    kilometrage: kmValue
-                })
+                headers: { 
+                    // On retire le format JSON strict qui fait paniquer certains navigateurs mobiles
+                    "Content-Type": "text/plain;charset=utf-8" 
+                },
+                body: payload
             }).then(() => {
                 loaderKm.style.display = 'none';
-                alert(`✅ Transmis avec succès !\n${enginValue} - Plaque : ${plateValue || 'N/A'} - KM : ${kmValue}`);
+                alert(`✅ Transmis !\n${enginValue} - KM : ${kmValue}`);
                 
                 // Réinitialisation des champs pour la prochaine saisie
                 inPlate.value = "";
                 inKm.value = "";
-                goToStep(1); // Retour au premier écran pour le prochain utilisateur
+                goToStep(1); // Retour au départ
             }).catch(err => {
                 loaderKm.style.display = 'none';
                 sendBtn.disabled = false;
-                alert("❌ Erreur réseau lors de l'envoi. Vérifiez votre connexion.");
+                alert("❌ Erreur réseau lors de l'envoi.");
                 console.error(err);
             });
-        });
 
         // Lancement au premier écran
         goToStep(1);
