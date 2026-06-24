@@ -35,7 +35,7 @@
             padding: 20px;
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            display: none; /* Géré par JS */
+            display: none;
             box-sizing: border-box;
         }
 
@@ -69,7 +69,7 @@
             margin-bottom: 15px;
         }
 
-        #video { width: 100%; height: 100%; object-fit: cover; }
+        #videoPlate, #videoKm { width: 100%; height: 100%; object-fit: cover; }
         #canvas { display: none; }
         
         .camera-overlay-btn {
@@ -182,42 +182,42 @@
             </select>
         </div>
         <button type="button" class="nav-btn btn-next" id="toStep3">Sélectionner ➔</button>
-        <button type="button" class="nav-btn btn-back" onclick="goToStep(1)">⬅ Retour</button>
+        <button type="button" class="nav-btn btn-back" id="backToStep1">⬅ Retour</button>
     </div>
 
     <div class="step-card" id="step3">
-        <label>Étape 3 : Scannez la plaque d'immatriculation</label>
+        <label>Étape 3 : Scannez ou saisissez la plaque</label>
         <div class="camera-container">
             <video id="videoPlate" autoplay playsinline></video>
-            <button class="camera-overlay-btn z-out" id="zOutPlate">−</button>
-            <button class="camera-overlay-btn z-in" id="zInPlate">+</button>
+            <button type="button" class="camera-overlay-btn z-out" id="zOutPlate">−</button>
+            <button type="button" class="camera-overlay-btn z-in" id="zInPlate">+</button>
         </div>
         
         <div class="input-group">
-            <label for="inPlate">Résultat Plaque (Modifiable si erreur)</label>
+            <label for="inPlate">Résultat Plaque (Modifiable)</label>
             <input type="text" id="inPlate" placeholder="AA-123-AA">
         </div>
 
-        <button type="button" class="nav-btn btn-scan" id="btnScanPlate">📷 Capturer & Analyser la plaque</button>
+        <button type="button" class="nav-btn btn-scan" id="btnScanPlate">📷 Capturer la plaque</button>
         <div id="loaderPlate" class="loader">Analyse de la plaque...</div>
         <button type="button" class="nav-btn btn-next" id="toStep4" style="margin-top:15px;">Étape suivante ➔</button>
         <button type="button" class="nav-btn btn-back" id="backToStep2">⬅ Retour</button>
     </div>
 
     <div class="step-card" id="step4">
-        <label>Étape 4 : Scannez le compteur kilométrique</label>
+        <label>Étape 4 : Scannez ou saisissez les kilomètres</label>
         <div class="camera-container">
             <video id="videoKm" autoplay playsinline></video>
-            <button class="camera-overlay-btn z-out" id="zOutKm">−</button>
-            <button class="camera-overlay-btn z-in" id="zInKm">+</button>
+            <button type="button" class="camera-overlay-btn z-out" id="zOutKm">−</button>
+            <button type="button" class="camera-overlay-btn z-in" id="zInKm">+</button>
         </div>
 
         <div class="input-group">
-            <label for="inKm">Kilométrage (Modifiable si erreur)</label>
+            <label for="inKm">Kilométrage (Modifiable)</label>
             <input type="number" id="inKm" placeholder="Ex: 84320" inputmode="numeric">
         </div>
 
-        <button type="button" class="nav-btn btn-scan" id="btnScanKm">📷 Capturer & Analyser les KM</button>
+        <button type="button" class="nav-btn btn-scan" id="btnScanKm">📷 Capturer les KM</button>
         <div id="loaderKm" class="loader">Analyse du compteur...</div>
         
         <div class="summary-box" id="summaryBox"></div>
@@ -229,27 +229,25 @@
     <canvas id="canvas"></canvas>
 
     <script>
-        // --- Configuration URL Google Sheets ---
+        // ========================================================
+        // CONFIGURATION URL GOOGLE SHEETS
+        // ========================================================
         const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz3gQVCXXZAOB9XzHWaiG3gad9vOWWOuTRIx4p6SiFkPVm36ao7S4eOBTmiuqWLJJlS/exec";
 
-        // Navigation & UI Elements
         const cards = [document.getElementById('step1'), document.getElementById('step2'), document.getElementById('step3'), document.getElementById('step4')];
         const dots = [document.getElementById('dot1'), document.getElementById('dot2'), document.getElementById('dot3'), document.getElementById('dot4')];
         
-        // Data Inputs
         const inDriver = document.getElementById('inDriver');
         const typeEngin = document.getElementById('typeEngin');
         const inPlate = document.getElementById('inPlate');
         const inKm = document.getElementById('inKm');
         const summaryBox = document.getElementById('summaryBox');
 
-        // Caméras et Flux
         let currentStream = null;
         let currentTrack = null;
         let zoomCapabilities = null;
         let currentZoom = 1;
 
-        // Gestion du parcours pas à pas
         function goToStep(stepNumber) {
             cards.forEach((card, index) => {
                 card.classList.toggle('active', index === (stepNumber - 1));
@@ -257,20 +255,16 @@
                 dots[index].classList.toggle('completed', index < (stepNumber - 1));
             });
 
-            // Arrêt des flux caméras précédents s'ils existent
             stopCamera();
 
-            // Allumage sélectif de la caméra selon l'étape
             if (stepNumber === 3) {
                 startCamera(document.getElementById('videoPlate'), document.getElementById('zInPlate'), document.getElementById('zOutPlate'));
             } else if (stepNumber === 4) {
                 startCamera(document.getElementById('videoKm'), document.getElementById('zInKm'), document.getElementById('zOutKm'));
-                // Maj du résumé final pour vérification avant envoi
-                summaryBox.innerHTML = `<strong>Récapitulatif :</strong><br>👤 Conducteur : ${inDriver.value}<br>🚒 Engin : ${typeEngin.value}<br>🆔 Plaque : ${inPlate.value || 'Non renseignée'}`;
+                summaryBox.innerHTML = `<strong>Récapitulatif avant envoi :</strong><br>👤 Conducteur : ${inDriver.value}<br>🚒 Engin : ${typeEngin.value}<br>🆔 Plaque : ${inPlate.value || 'MANUELLE'}`;
             }
         }
 
-        // Démarrage dynamique de la caméra arrière
         async function startCamera(videoElement, zInBtn, zOutBtn) {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -288,7 +282,7 @@
                     setupZoom(zInBtn, zOutBtn);
                 };
             } catch (err) {
-                console.error("Erreur d'accès caméra :", err);
+                console.error("Caméra indisponible ou bloquée :", err);
             }
         }
 
@@ -300,7 +294,6 @@
             }
         }
 
-        // Zoom numérique standardisé
         function setupZoom(zInBtn, zOutBtn) {
             if (!currentTrack || !('getCapabilities' in currentTrack)) { zInBtn.style.display='none'; zOutBtn.style.display='none'; return; }
             const caps = currentTrack.getCapabilities();
@@ -319,7 +312,6 @@
             zOutBtn.onclick = () => triggerZoom('out');
         }
 
-        // --- Logique de capture de l'image commune ---
         function captureSnapshot(videoEl) {
             const canvas = document.getElementById('canvas');
             const context = canvas.getContext('2d');
@@ -329,24 +321,23 @@
             return canvas.toDataURL('image/jpeg');
         }
 
-        // Événements de navigation de base
+        // Navigation entre écrans
         document.getElementById('toStep2').addEventListener('click', () => {
             if(!inDriver.value.trim()) { alert("Veuillez renseigner le nom du conducteur."); return; }
             goToStep(2);
         });
         document.getElementById('toStep3').addEventListener('click', () => goToStep(3));
-        document.getElementById('backToStep2').addEventListener('click', () => goToStep(2));
         document.getElementById('toStep4').addEventListener('click', () => goToStep(4));
+        
+        document.getElementById('backToStep1').addEventListener('click', () => goToStep(1));
+        document.getElementById('backToStep2').addEventListener('click', () => goToStep(2));
         document.getElementById('backToStep3').addEventListener('click', () => goToStep(3));
 
-        // --- TRAITEMENT ET OCR ÉTAPE 3 : LA PLAQUE ---
+        // OCR Étape 3 (Plaque)
         const btnScanPlate = document.getElementById('btnScanPlate');
         const loaderPlate = document.getElementById('loaderPlate');
-        
         btnScanPlate.addEventListener('click', async () => {
-            const videoPlate = document.getElementById('videoPlate');
-            const imageBase64 = captureSnapshot(videoPlate);
-            
+            const imageBase64 = captureSnapshot(document.getElementById('videoPlate'));
             loaderPlate.style.display = 'block';
             btnScanPlate.disabled = true;
 
@@ -354,12 +345,7 @@
                 const { data: { text } } = await Tesseract.recognize(imageBase64, 'fra+eng');
                 const plateRegex = /[A-Z]{2}[- ]?\d{3}[- ]?[A-Z]{2}/i; 
                 const match = text.match(plateRegex);
-                
-                if(match) {
-                    inPlate.value = match[0].toUpperCase().replace(/[ ]/g, '-');
-                } else {
-                    alert("Plaque non détectée automatiquement. Ajustez le cadrage ou écrivez-la directement.");
-                }
+                if(match) inPlate.value = match[0].toUpperCase().replace(/[ ]/g, '-');
             } catch(e) {
                 console.error(e);
             } finally {
@@ -368,26 +354,18 @@
             }
         });
 
-        // --- TRAITEMENT ET OCR ÉTAPE 4 : LE COMPTEUR ---
+        // OCR Étape 4 (Kilomètres)
         const btnScanKm = document.getElementById('btnScanKm');
         const loaderKm = document.getElementById('loaderKm');
-
         btnScanKm.addEventListener('click', async () => {
-            const videoKm = document.getElementById('videoKm');
-            const imageBase64 = captureSnapshot(videoKm);
-            
+            const imageBase64 = captureSnapshot(document.getElementById('videoKm'));
             loaderKm.style.display = 'block';
             btnScanKm.disabled = true;
 
             try {
                 const { data: { text } } = await Tesseract.recognize(imageBase64, 'eng');
                 const kmMatches = text.match(/\b\d{4,7}\b/g) || text.match(/\d{4,7}\b/g);
-                
-                if(kmMatches) {
-                    inKm.value = kmMatches[0];
-                } else {
-                    alert("Chiffres du compteur non détectés. Saisissez-les manuellement.");
-                }
+                if(kmMatches) inKm.value = kmMatches[0];
             } catch(e) {
                 console.error(e);
             } finally {
@@ -396,42 +374,20 @@
             }
         });
 
-       // --- ENVOI FINAL AU GOOGLE SHEETS (Saisie manuelle ou OCR) ---
+        // Bouton d'envoi final standardisé (Format URL Formulaire)
         const sendBtn = document.getElementById('sendBtn');
         sendBtn.addEventListener('click', () => {
-            // 1. On récupère les valeurs EXACTES écrites dans les cases à cet instant
             const kmValue = inKm.value.trim();
             const plateValue = inPlate.value.trim().toUpperCase();
             const enginValue = typeEngin.value;
             const driverValue = inDriver.value.trim();
 
-            // 2. Sécurités de base pour éviter d'envoyer une ligne vide
-            if (!driverValue) {
-                alert("⚠️ Attention : Le nom du conducteur est vide. Revenez à l'étape 1.");
-                goToStep(1);
-                return;
-            }
-            if (!kmValue) {
-                alert("⚠️ Erreur : Le kilométrage est obligatoire pour valider la fiche.");
-                return;
-            }
+            if (!kmValue) { alert("Le kilométrage est obligatoire."); return; }
 
-            // 3. Verrouillage du bouton pour éviter les doubles clics
             sendBtn.disabled = true;
-            loaderKm.innerText = "Transmission des données saisies...";
+            loaderKm.innerText = "Transmission en cours...";
             loaderKm.style.display = 'block';
-            
-            // --- ENVOI DE SÉCURITÉ NETTOYÉ ---
-            // On prépare les données sous forme de texte brut pour contourner les blocages des téléphones
-            const payload = JSON.stringify({
-                conducteur: driverValue,
-                typeEngin: enginValue,
-                plaque: plateValue || "MANUELLE",
-                kilometrage: kmValue
-            });
 
-           // --- ENVOI DE SÉCURITÉ MAXIMUM (Format Formulaire) ---
-            // On utilise un format que les smartphones ne bloquent jamais
             const formData = new URLSearchParams();
             formData.append('conducteur', driverValue);
             formData.append('typeEngin', enginValue);
@@ -440,28 +396,25 @@
 
             fetch(WEB_APP_URL, {
                 method: "POST",
-                mode: "no-cors", 
+                mode: "no-cors",
                 cache: "no-cache",
-                headers: { 
-                    "Content-Type": "application/x-www-form-urlencoded" 
-                },
-                body: formData.toString() // Envoi sous forme de chaîne standard
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: formData.toString()
             }).then(() => {
                 loaderKm.style.display = 'none';
-                alert(`✅ Rapport transmis avec succès !\n${enginValue} - KM : ${kmValue}`);
-                
-                // Réinitialisation et retour au départ
+                alert("✅ Fiche transmise avec succès !");
                 inPlate.value = "";
                 inKm.value = "";
                 goToStep(1);
             }).catch(err => {
                 loaderKm.style.display = 'none';
                 sendBtn.disabled = false;
-                alert("❌ Erreur réseau lors de l'envoi.");
+                alert("Erreur réseau.");
                 console.error(err);
             });
+        });
 
-        // Lancement au premier écran
+        // Démarrage initial
         goToStep(1);
     </script>
 </body>
