@@ -430,23 +430,30 @@
                 kilometrage: kmValue
             });
 
+           // --- ENVOI DE SÉCURITÉ MAXIMUM (Format Formulaire) ---
+            // On utilise un format que les smartphones ne bloquent jamais
+            const formData = new URLSearchParams();
+            formData.append('conducteur', driverValue);
+            formData.append('typeEngin', enginValue);
+            formData.append('plaque', plateValue || "MANUELLE");
+            formData.append('kilometrage', kmValue);
+
             fetch(WEB_APP_URL, {
                 method: "POST",
-                mode: "no-cors", // Gardé pour éviter les blocages de sécurité des navigateurs
+                mode: "no-cors", 
                 cache: "no-cache",
                 headers: { 
-                    // On retire le format JSON strict qui fait paniquer certains navigateurs mobiles
-                    "Content-Type": "text/plain;charset=utf-8" 
+                    "Content-Type": "application/x-www-form-urlencoded" 
                 },
-                body: payload
+                body: formData.toString() // Envoi sous forme de chaîne standard
             }).then(() => {
                 loaderKm.style.display = 'none';
-                alert(`✅ Transmis !\n${enginValue} - KM : ${kmValue}`);
+                alert(`✅ Rapport transmis avec succès !\n${enginValue} - KM : ${kmValue}`);
                 
-                // Réinitialisation des champs pour la prochaine saisie
+                // Réinitialisation et retour au départ
                 inPlate.value = "";
                 inKm.value = "";
-                goToStep(1); // Retour au départ
+                goToStep(1);
             }).catch(err => {
                 loaderKm.style.display = 'none';
                 sendBtn.disabled = false;
