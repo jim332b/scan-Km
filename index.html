@@ -2,60 +2,138 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner Compteur KM</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Scanner Compteur & Plaque</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f2f5; margin: 0; padding: 20px; }
-        #video { width: 100%; max-width: 500px; border-radius: 12px; background: #000; }
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f2f5; margin: 0; padding: 10px; touch-action: manipulation; }
+        .camera-container { position: relative; width: 100%; max-width: 500px; }
+        #video { width: 100%; border-radius: 12px; background: #000; display: block; }
         #canvas { display: none; }
-        .controls { margin-top: 20px; display: flex; gap: 10px; }
-        button { padding: 12px 24px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; background: #007bff; color: white; }
+        
+        .zoom-controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 15px; background: rgba(0,0,0,0.6); padding: 8px 15px; border-radius: 20px; }
+        .zoom-btn { background: white; color: black; border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 20px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        
+        .controls { margin-top: 15px; display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 500px; align-items: center; }
+        
+        /* Style du sélecteur d'engin */
+        .select-wrapper { width: 85%; display: flex; flex-direction: column; gap: 5px; }
+        label { font-size: 14px; font-weight: bold; color: #333; }
+        select { padding: 12px; font-size: 16px; border-radius: 8px; border: 1px solid #ccc; background: white; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        
+        button#captureBtn { padding: 15px; width: 85%; font-size: 18px; border: none; border-radius: 30px; cursor: pointer; background: #007bff; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-weight: bold; margin-top: 5px; }
         button:disabled { background: #ccc; }
-        #result { margin-top: 20px; font-size: 24px; font-weight: bold; color: #28a745; }
-        .loader { display: none; color: #666; margin-top: 10px; }
+        
+        #result { margin-top: 20px; width: 90%; max-width: 450px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); text-align: center; }
+        .res-label { font-size: 14px; color: #666; margin-bottom: 2px; }
+        .res-value { font-size: 20px; font-weight: bold; color: #333; margin-bottom: 10px; }
+        .loader { display: none; color: #666; margin-top: 10px; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <h2>Scanner de Kilométrage</h2>
+    <h3>Scanner Opérationnel Véhicules</h3>
     
-    <video id="video" autoplay playsinline></video>
-    <canvas id="canvas"></canvas>
-
-    <div class="controls">
-        <button id="captureBtn">Capturer & Lire</button>
+    <div class="camera-container">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
+        
+        <div class="zoom-controls">
+            <button class="zoom-btn" id="zoomOut">−</button>
+            <button class="zoom-btn" id="zoomIn">+</button>
+        </div>
     </div>
 
-    <div id="loader" class="loader">Analyse en cours... (Patientez 2-3s)</div>
-    <div id="result">--- KM</div>
+    <div class="controls">
+        <div class="select-wrapper">
+            <label for="typeEngin">Type d'engin :</label>
+            <select id="typeEngin">
+                <option value="VLS">VLS (Véhicule de Liaison Hors Route)</option>
+                <option value="VLEM">VLEM (Véhicule Liaison Équipe Médicale)</option>
+                <option value="FGPSR">FGPSR (Fourgon Grande Puissance Secours Routier)</option>
+                <option value="VSAV">VSAV (Véhicule de Secours et d'Assistance aux Victimes)</option>
+                <option value="FPT">FPT (Fourgon Pompe Tonne)</option>
+                <option value="CCF">CCF (Camion Citerne Feux de Forêt)</option>
+                <option value="Autre">Autre / Inconnu</option>
+            </select>
+        </div>
+
+        <button id="captureBtn">📷 Scanner & Enregistrer</button>
+        <div id="loader" class="loader">Analyse de la photo...</div>
+    </div>
+
+    <div id="result">
+        <div class="res-label">Plaque détectée :</div>
+        <div class="res-value" id="valPlate">---</div>
+        <div class="res-label">Kilométrage :</div>
+        <div class="res-value" id="valKm">--- KM</div>
+    </div>
 
     <script>
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const captureBtn = document.getElementById('captureBtn');
-        const resultDiv = document.getElementById('result');
         const loader = document.getElementById('loader');
+        const valPlate = document.getElementById('valPlate');
+        const valKm = document.getElementById('valKm');
+        const zoomInBtn = document.getElementById('zoomIn');
+        const zoomOutBtn = document.getElementById('zoomOut');
+        const typeEnginSelect = document.getElementById('typeEngin');
 
-        // URL de votre Google Apps Script (à remplacer)
-        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz3gQVCXXZAOB9XzHWaiG3gad9vOWWOuTRIx4p6SiFkPVm36ao7S4eOBTmiuqWLJJlS/exec";
+        // URL de votre Google Apps Script (À REMPLACER)
+        const WEB_APP_URL = "VOTRE_URL_GOOGLE_APPS_SCRIPT";
 
-        // 1. Accéder à la caméra arrière
+        let videoStream = null;
+        let videoTrack = null;
+        let zoomCapabilities = null;
+        let currentZoom = 1;
+
         async function startCamera() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment" }, 
-                    audio: false 
+                const constraints = { video: { facingMode: { exact: "environment" } }, audio: false };
+                stream = await navigator.mediaDevices.getUserMedia(constraints).catch(() => {
+                    return navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
                 });
                 video.srcObject = stream;
+                videoStream = stream;
+                videoTrack = stream.getVideoTracks()[0];
+                video.onloadedmetadata = () => { checkZoomCapabilities(); };
             } catch (err) {
                 console.error("Erreur caméra: ", err);
-                alert("Impossible d'accéder à la caméra. Vérifiez les autorisations HTTPS.");
+                alert("Impossible d'accéder à la caméra.");
             }
         }
 
-        // 2. Capturer la photo et lancer l'OCR
+        function checkZoomCapabilities() {
+            if (!videoTrack || !('getCapabilities' in videoTrack)) { hideZoomControls(); return; }
+            const capabilities = videoTrack.getCapabilities();
+            if (!capabilities.zoom) { hideZoomControls(); return; }
+            zoomCapabilities = capabilities.zoom;
+            currentZoom = zoomCapabilities.min;
+            updateZoomButtons();
+        }
+
+        function hideZoomControls() { zoomInBtn.style.display = 'none'; zoomOutBtn.style.display = 'none'; }
+
+        function applyZoom(direction) {
+            if (!zoomCapabilities || !videoTrack) return;
+            const step = (zoomCapabilities.max - zoomCapabilities.min) / 10;
+            currentZoom = direction === 'in' ? Math.min(zoomCapabilities.max, currentZoom + step) : Math.max(zoomCapabilities.min, currentZoom - step);
+            videoTrack.applyConstraints({ advanced: [{ zoom: currentZoom }] }).catch(e => console.error(e));
+            updateZoomButtons();
+        }
+
+        function updateZoomButtons() {
+            zoomInBtn.disabled = (currentZoom >= zoomCapabilities.max);
+            zoomOutBtn.disabled = (currentZoom <= zoomCapabilities.min);
+        }
+
+        zoomInBtn.addEventListener('click', () => applyZoom('in'));
+        zoomOutBtn.addEventListener('click', () => applyZoom('out'));
+
         captureBtn.addEventListener('click', async () => {
+            if (!videoStream) return;
+
             const context = canvas.getContext('2d');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
@@ -63,46 +141,65 @@
 
             loader.style.display = 'block';
             captureBtn.disabled = true;
-            resultDiv.innerText = "Analyse...";
+            valPlate.innerText = "Analyse...";
+            valKm.innerText = "Analyse...";
 
-            // Lancer Tesseract.js
             try {
                 const { data: { text } } = await Tesseract.recognize(
                     canvas.toDataURL('image/jpeg'),
-                    'eng', // On utilise 'eng' car les chiffres sont universels
+                    'fra+eng',
                     { logger: m => console.log(m) }
                 );
 
-                // Nettoyage du texte pour ne garder que les chiffres (Regex)
-                // On cherche une suite de 3 à 7 chiffres
-                const matches = text.match(/\d{3,7}/g);
-                const finalKm = matches ? matches[0] : null;
+                const kmMatches = text.match(/\d{4,7}/g);
+                let detectedKm = kmMatches ? kmMatches[0] : null;
 
-                if (finalKm) {
-                    resultDiv.innerText = finalKm + " KM";
-                    sendToGoogleSheets(finalKm);
+                const plateRegex = /[A-Z]{2}[- ]?\d{3}[- ]?[A-Z]{2}/i; 
+                const plateMatches = text.match(plateRegex);
+                let detectedPlate = plateMatches ? plateMatches[0].toUpperCase().replace(/[ ]/g, '-') : null;
+
+                valPlate.innerText = detectedPlate || "Non détectée";
+                valKm.innerText = detectedKm ? (detectedKm + " KM") : "Non détecté";
+
+                // Récupération de la valeur sélectionnée dans le menu déroulant
+                const selectedEngin = typeEnginSelect.value;
+
+                if (detectedKm && detectedPlate) {
+                    sendToGoogleSheets(detectedKm, detectedPlate, selectedEngin);
+                } else if (detectedKm || detectedPlate) {
+                    // Envoi partiel si au moins une donnée est lue
+                    if(confirm("Lecture incomplète. Voulez-vous quand même envoyer les données récoltées ?")) {
+                        sendToGoogleSheets(detectedKm || "À vérifier", detectedPlate || "À vérifier", selectedEngin);
+                    }
                 } else {
-                    resultDiv.innerText = "Non détecté";
-                    alert("Chiffres illisibles, réessayez de plus près.");
+                    alert("Lecture impossible. Ajustez le zoom ou la lumière.");
                 }
+
             } catch (e) {
-                alert("Erreur OCR: " + e);
+                alert("Erreur OCR : " + e);
             } finally {
                 loader.style.display = 'none';
                 captureBtn.disabled = false;
             }
         });
 
-        // 3. Envoyer vers Google Sheets
-        function sendToGoogleSheets(km) {
+        function sendToGoogleSheets(km, plate, engin) {
+            loader.innerText = "Enregistrement dans Sheets...";
+            loader.style.display = 'block';
+
             fetch(WEB_APP_URL, {
                 method: "POST",
-                mode: "no-cors", // Crucial pour éviter les erreurs CORS
+                mode: "no-cors",
                 cache: "no-cache",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ vehicule: "Mobile Web App", kilometrage: km })
+                body: JSON.stringify({ plaque: plate, kilometrage: km, typeEngin: engin })
             }).then(() => {
-                alert("Enregistré dans Google Sheets !");
+                loader.style.display = 'none';
+                alert(`✅ ${engin} (${plate}) enregistré à ${km} KM !`);
+            }).catch(err => {
+                loader.style.display = 'none';
+                alert("Erreur d'envoi.");
+                console.error(err);
             });
         }
 
