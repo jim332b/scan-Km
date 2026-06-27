@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Suivi Parc Véhicules</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <style>
         :root {
             --primary-color: #007bff;
@@ -69,6 +70,7 @@
         }
 
         video { width: 100%; height: 100%; object-fit: cover; }
+        canvas { display: none; }
         
         .camera-overlay-btn {
             position: absolute;
@@ -122,17 +124,22 @@
         }
         
         .btn-next { background: var(--primary-color); color: white; }
+        .btn-scan { background: #6f42c1; color: white; margin-bottom: 10px; }
         .btn-submit { background: var(--success-color); color: white; }
         .btn-back { background: #6c757d; color: white; margin-top: 10px; }
         button:disabled { background: #6c757d !important; opacity: 0.5; }
         
         .loader { 
             display: none; 
-            color: #495057; 
-            font-size: 14px;
+            color: #ffc107; 
+            background: rgba(0,0,0,0.7);
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            font-size: 16px;
             font-weight: bold; 
             text-align: center;
-            margin: 10px 0;
+            line-height: 200px;
+            border-radius: 8px;
         }
 
         .summary-box {
@@ -183,16 +190,19 @@
     </div>
 
     <div class="step-card" id="step3">
-        <label>Étape 3 : Saisissez l'immatriculation</label>
+        <label>Étape 3 : Scannez OU saisissez au clavier</label>
         <div class="camera-container">
             <video id="videoPlate" autoplay playsinline></video>
             <button type="button" class="camera-overlay-btn z-out" id="zOutPlate">−</button>
             <button type="button" class="camera-overlay-btn z-in" id="zInPlate">+</button>
+            <div id="loaderPlate" class="loader">Lecture de la plaque...</div>
         </div>
         
+        <button type="button" class="nav-btn btn-scan" id="btnScanPlate">📷 Scanner la Plaque</button>
+
         <div class="input-group">
-            <label for="inPlate">Plaque d'immatriculation</label>
-            <input type="text" id="inPlate" placeholder="AA-123-AA (ou n° de parc)">
+            <label for="inPlate">Immatriculation (Modifiable à la main)</label>
+            <input type="text" id="inPlate" placeholder="AA-123-AA ou N° de Parc">
         </div>
 
         <button type="button" class="nav-btn btn-next" id="toStep4">Étape suivante ➔</button>
@@ -200,30 +210,34 @@
     </div>
 
     <div class="step-card" id="step4">
-        <label>Étape 4 : Saisissez le kilométrage</label>
+        <label>Étape 4 : Scannez OU saisissez les kilomètres</label>
         <div class="camera-container">
             <video id="videoKm" autoplay playsinline></video>
             <button type="button" class="camera-overlay-btn z-out" id="zOutKm">−</button>
             <button type="button" class="camera-overlay-btn z-in" id="zInKm">+</button>
+            <div id="loaderKm" class="loader">Lecture du compteur...</div>
         </div>
 
+        <button type="button" class="nav-btn btn-scan" id="btnScanKm">📷 Scanner les KM</button>
+
         <div class="input-group">
-            <label for="inKm">Kilométrage actuel</label>
+            <label for="inKm">Kilométrage actuel (Modifiable à la main)</label>
             <input type="number" id="inKm" placeholder="Ex: 84320" inputmode="numeric">
         </div>
         
         <div class="summary-box" id="summaryBox"></div>
 
         <button type="button" class="nav-btn btn-submit" id="sendBtn">💾 Transmettre la fiche</button>
-        <div id="loaderKm" class="loader">Transmission en cours...</div>
         <button type="button" class="nav-btn btn-back" id="backToStep3">⬅ Retour</button>
     </div>
+
+    <canvas id="canvas"></canvas>
 
     <script>
         // ========================================================
         // CONFIGURATION URL GOOGLE SHEETS
         // ========================================================
-        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzh_ewrLrBYBWYZWPCIg1Oa9AlG8fWKCPWkq1LFjtlZsK6gkra9pbf1Zd35sdEvB-fdTw/exec";
+        const WEB_APP_URL = "VOTRE_URL_GOOGLE_APPS_SCRIPT";
 
         const cards = [document.getElementById('step1'), document.getElementById('step2'), document.getElementById('step3'), document.getElementById('step4')];
         const dots = [document.getElementById('dot1'), document.getElementById('dot2'), document.getElementById('dot3'), document.getElementById('dot4')];
@@ -233,7 +247,6 @@
         const inPlate = document.getElementById('inPlate');
         const inKm = document.getElementById('inKm');
         const summaryBox = document.getElementById('summaryBox');
-        const loaderKm = document.getElementById('loaderKm');
         const sendBtn = document.getElementById('sendBtn');
 
         let currentStream = null;
@@ -275,7 +288,7 @@
                     setupZoom(zInBtn, zOutBtn);
                 };
             } catch (err) {
-                console.error("Caméra indisponible :", err);
+                console.error("Caméra non accessible :", err);
             }
         }
 
@@ -305,20 +318,67 @@
             zOutBtn.onclick = () => triggerZoom('out');
         }
 
+        function captureSnapshot(videoEl) {
+            const canvas = document.getElementById('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = videoEl.videoWidth;
+            canvas.height = videoEl.videoHeight;
+            context.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+            return canvas.toDataURL('image/jpeg');
+        }
+
         // Navigation
         document.getElementById('toStep2').addEventListener('click', () => {
-            if(!inDriver.value.trim()) { alert("Veuillez renseigner le nom du conducteur."); return; }
+            if(!inDriver.value.trim()) { alert("Veuillez renseigner le nom."); return; }
             goToStep(2);
         });
         document.getElementById('toStep3').addEventListener('click', () => goToStep(3));
         document.getElementById('toStep4').addEventListener('click', () => {
-            if(!inPlate.value.trim()) { alert("Veuillez renseigner l'immatriculation."); return; }
+            if(!inPlate.value.trim()) { alert("Veuillez saisir ou scanner une plaque."); return; }
             goToStep(4);
         });
         
         document.getElementById('backToStep1').addEventListener('click', () => goToStep(1));
         document.getElementById('backToStep2').addEventListener('click', () => goToStep(2));
         document.getElementById('backToStep3').addEventListener('click', () => goToStep(3));
+
+        // Fonction d'analyse OCR Plaque
+        const btnScanPlate = document.getElementById('btnScanPlate');
+        const loaderPlate = document.getElementById('loaderPlate');
+        btnScanPlate.addEventListener('click', async () => {
+            const img = captureSnapshot(document.getElementById('videoPlate'));
+            loaderPlate.style.display = 'block';
+            try {
+                const { data: { text } } = await Tesseract.recognize(img, 'fra+eng');
+                const match = text.match(/[A-Z]{2}[- ]?\d{3}[- ]?[A-Z]{2}/i);
+                if(match) {
+                    inPlate.value = match[0].toUpperCase().replace(/[ ]/g, '-');
+                } else {
+                    alert("Plaque non détectée automatiquement. Saisissez-la directement au clavier dans la case.");
+                }
+            } catch(e) {
+                console.error(e);
+            } finally { loaderPlate.style.display = 'none'; }
+        });
+
+        // Fonction d'analyse OCR Kilomètres
+        const btnScanKm = document.getElementById('btnScanKm');
+        const loaderKm = document.getElementById('loaderKm');
+        btnScanKm.addEventListener('click', async () => {
+            const img = captureSnapshot(document.getElementById('videoKm'));
+            loaderKm.style.display = 'block';
+            try {
+                const { data: { text } } = await Tesseract.recognize(img, 'eng');
+                const kmMatches = text.match(/\b\d{3,7}\b/g);
+                if(kmMatches) {
+                    inKm.value = kmMatches[0];
+                } else {
+                    alert("Compteur illisible. Écrivez le kilométrage manuellement dans la case.");
+                }
+            } catch(e) {
+                console.error(e);
+            } finally { loaderKm.style.display = 'none'; }
+        });
 
         // Envoi final direct
         sendBtn.addEventListener('click', () => {
@@ -329,8 +389,7 @@
 
             if (!kmValue) { alert("Le kilométrage est obligatoire."); return; }
 
-            sendBtn.style.display = 'none';
-            loaderKm.style.display = 'block';
+            sendBtn.disabled = true;
 
             const formData = new URLSearchParams();
             formData.append('conducteur', driverValue);
@@ -345,21 +404,18 @@
                 headers: { "Content-Type": "application/x-www-form-urlencoded" },
                 body: formData.toString()
             }).then(() => {
-                loaderKm.style.display = 'none';
-                sendBtn.style.display = 'block';
                 alert("✅ Transmis avec succès !");
                 inPlate.value = "";
                 inKm.value = "";
+                sendBtn.disabled = false;
                 goToStep(1);
             }).catch(err => {
-                loaderKm.style.display = 'none';
-                sendBtn.style.display = 'block';
+                sendBtn.disabled = false;
                 alert("Erreur réseau lors de l'envoi.");
                 console.error(err);
             });
         });
 
-        // Démarrage initial
         goToStep(1);
     </script>
 </body>
